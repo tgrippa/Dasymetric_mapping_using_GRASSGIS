@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Functions for automatic check and creation of GRASS GIS database folders
 """

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Functions to manage and inform the user about processing time used.
 The print_processing_time(begintime, printmessage) is used to calculate and display the processing time for various stages of the processing chain. 
