@@ -1,0 +1,2 @@
+# Ignore the compiled python script when commit
+*.pyc
