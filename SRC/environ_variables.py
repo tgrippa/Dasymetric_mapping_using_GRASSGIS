@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 """
 Functions related to environmental variables
