@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
+from __main__ import *
 
 import os
 import csv
 import grass.script as gscript
 
 
-def proportion_class(rasterLayer, Land_cover, Land_use, gridded_admin_units, clumped_grid, outputdirectory_admin, outputdirectory_grid, cl):
+def proportion_class(rasterLayer, cl):
     '''
     Function extracting a binary map for class 'cl' in raster 'rasterLayer', then computing the proportion of this class in both administratives units and in grids.
     The computational region should be defined properly before running this function.
