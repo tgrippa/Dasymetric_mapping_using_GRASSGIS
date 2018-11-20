@@ -31,13 +31,13 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     covariates are proportion of each Land Cover's class (opt: with proportion of each land use's class)
     '''
     global gridded_vector, log_text, log_text_extend, n_jobs, kfold
-	# Define the path to the file with all co-variates
+    # Define the path to the file with all co-variates
     all_stats_grid=os.path.join(outputdirectory_grid,"all_stats.csv") # for grid level
     all_stats_admin=os.path.join(outputdirectory_admin,"all_stats.csv") # for admin level
     # -------------------------------------------------------------------------
     # Data preparation for administrative units (compute natural log of response variable)
     # -------------------------------------------------------------------------
-	# Export desired columns from the attribute table as CSV
+    # Export desired columns from the attribute table as CSV
     tmp_table=os.path.join(outputdirectory_admin,"%s.csv"%random_layer_name()) # Define the path to the .csv
     query="SELECT cat,%s FROM %s"%(response_column,gridded_vector.split('@')[0])
     gscript.run_command('db.select', quiet=True, sql=query, output=tmp_table)
@@ -167,6 +167,7 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     TMP_MAPS.append("weight_float")
 
     ## Force weight to zero if no built-up pixel in the grid
+    gscript.run_command('r.mask', overwrite=True, raster='maskcopy')  # Apply mask
     if len(built_up_pixels) == 0:
         gscript.run_command('r.mapcalc',expression="%s=weight_float"%weigthing_layer_name, quiet=True, overwrite=True)
     else:
@@ -182,18 +183,21 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
         ## Create r.mapcalc formula to be used for masking built pixels in the weight layer
         formula = "%s="%weigthing_layer_name
         # Iterate according to the lenght of the 'built_up_pixels' list
-        for x in built_up_pixels:
-            input_layer = '%s_%s'%(inputlayer_prefix,x)
+        TO_REMOVE = []
+        for built_up_pixel in built_up_pixels:
+            input_layer = '%s_%s'%(inputlayer_prefix,built_up_pixel)
             resamp_layer = 'sum_%s'%input_layer
             gscript.run_command('r.resamp.stats', quiet=True, overwrite=True, input=input_layer, output=resamp_layer, method='sum')
-            TMP_MAPS.append(resamp_layer)
+            TO_REMOVE.append(resamp_layer)
             formula += "if(%s!=0,weight_float,"%resamp_layer
         formula += "0"
-        for x in built_up_pixels:
+        for built_up_pixel in built_up_pixels:
             formula += ")"
         # Apply to formula through r.mapcalc
         gscript.run_command('r.mapcalc',expression=formula, quiet=True, overwrite=True)
-
+        # Remove temporary layers for masking built pixels
+        [gscript.run_command('g.remove', flags='f', type='raster', name=rast) for rast in TO_REMOVE]
+    gscript.run_command('r.mask', flags='r')  # Remove mask
     # -------------------------------------------------------------------------
     # Feature importances
     # -------------------------------------------------------------------------
@@ -201,21 +205,22 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     indices = np.argsort(importances)[::-1]
     x_axis = importances[indices][::-1]
     idx = indices[::-1]
-    try:
-        y_axis = range(x.shape[1])
-        plt.figure(figsize=(4, (len(y_axis)+1)*0.23))  #Set the size of the plot according to the number of features
-        plt.scatter(x_axis,y_axis)
-        Labels = []
-        for i in range(x.shape[1]):
-            Labels.append(x_grid.columns[idx[i]])
-        Labels=labels_from_csv(Labels)  #Change the labels of the feature according to 'lc_classes_list' and 'lu_classes_list'
-        plt.yticks(y_axis, Labels)
-        plt.ylim([-1,len(y_axis)])  #Ajust ylim
-        plt.xlim([-0.02,max(x_axis)+0.02]) #Ajust xlim
-        plt.title("Feature importances")
-        if not os.path.exists(os.path.split(path_plot)[0]):  #Create folder where to save the plot if not exists
-            os.makedirs(os.path.split(path_plot)[0])
-        plt.savefig(path_plot+'.png', bbox_inches='tight', dpi=400)  # Export in .png file (image)
-        plt.savefig(path_plot+'.eps', bbox_inches='tight', dpi=400)  # Export in .svg file (vectorial)
-    except:
-        gscript.warning("The feature importance plot has not been created for some reason.")
+    y_axis = range(x.shape[1])
+    plt.figure(figsize=(4, (len(y_axis)+1)*0.23))  #Set the size of the plot according to the number of features
+    plt.scatter(x_axis,y_axis)
+    Labels = []
+    for i in range(x.shape[1]):
+        Labels.append(x_grid.columns[idx[i]])
+    Labels=labels_from_csv(Labels)  #Change the labels of the feature according to 'lc_classes_list' and 'lu_classes_list'
+    plt.yticks(y_axis, Labels)
+    plt.ylim([-1,len(y_axis)])  #Ajust ylim
+    plt.xlim([-0.02,max(x_axis)+0.02]) #Ajust xlim
+    plt.title("Feature importances")
+    if not os.path.exists(os.path.split(path_plot)[0]):  #Create folder where to save the plot if not exists
+        os.makedirs(os.path.split(path_plot)[0])
+    plt.savefig(path_plot+'.png', bbox_inches='tight', dpi=400)  # Export in .png file (image)
+    plt.savefig(path_plot+'.eps', bbox_inches='tight', dpi=400)  # Export in .svg file (vectorial)
+#==============================================================================
+#     except:
+#         gscript.warning("The feature importance plot has not been created for some reason.")
+#==============================================================================
