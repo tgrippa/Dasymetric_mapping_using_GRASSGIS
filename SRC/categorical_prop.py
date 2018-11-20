@@ -71,7 +71,7 @@ def proportion_class(rasterLayer, cl):
                         overwrite=True,quiet=True) # Mapcalc to create binary raster for the expected class 'cl'
     ### Create a temporary copy of the current binary raster with all pixels values equal to 1 (to be used for computing proportion of current binary class)
     tmplayer = random_layer_name(prefix='tmp_%s'%binary_raster)
-    gscript.run_command('r.mapcalc', expression='%s=if(%s==1,1,1)'%(tmplayer,binary_raster),
+    gscript.run_command('r.mapcalc', expression='%s=if(%s==1,1,1)'%(tmplayer,rasterLayer),
                         overwrite=True,quiet=True)
     # Fill potential remaining null values with 0 value (when using r.mapcalc, null values existing in the 'rasterLayer' will remain null in the binary)
     gscript.run_command('r.null', quiet=True, map=binary_raster, null='0')
