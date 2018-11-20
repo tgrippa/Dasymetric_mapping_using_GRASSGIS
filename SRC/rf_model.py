@@ -25,7 +25,7 @@ def random_layer_name(prefix='tmp'):
     return prefix + '_' +gscript.basename(tmp).replace('.','_')
 
 
-def RandomForest(weigthing_layer_name,vector,id):
+def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_classes):
     '''
     Function that creates a random forest model trained at the administrative units level to generate gridded prediction
     covariates are proportion of each Land Cover's class (opt: with proportion of each land use's class)
@@ -69,11 +69,12 @@ def RandomForest(weigthing_layer_name,vector,id):
 
     ## Make a list with name of covariables columns
     list_covar=[]
-    for cl in lc_classes_list:
-        list_covar.append("LC_"+cl+"_proportion")
-    for cl in lu_classes_list:
-		list_covar.append("LU_"+cl+"_proportion")
-    list_covar.append(mr_builtup[:2]+"_1_proportion")
+    for cl in lc_classes:
+        list_covar.append("LC_%s_proportion"%cl)
+    for cl in lu_classes:
+        list_covar.append("LU_%s_proportion"%cl)
+    for cl in mr_classes:
+        list_covar.append("MR_%s_proportion"%cl)
 
     ## Saving variable to predict (response variable)
     y = df_admin['log_response']
@@ -123,7 +124,10 @@ def RandomForest(weigthing_layer_name,vector,id):
     for mean, std, params in zip(means, stds, grid_search.cv_results_['params']):
         message+="%0.3f (+/-%0.03f) for %r"% (mean, std, params)+'\n'
     log_text_extend+=message
-
+    # Print final model OOB
+    message='Final Random Forest model run - internal Out-of-bag score (OOB) : %0.3f'%regressor.oob_score_
+    log_text+=message+'\n'
+    print message
     #### Prediction
     # Predict on grids
     x_grid=df_grid[list_covar] #Get a dataframe with independent variables for grids (remaining after feature selection)
@@ -161,14 +165,34 @@ def RandomForest(weigthing_layer_name,vector,id):
     gscript.run_command('r.mapcalc', expression="weight_float=float(weight_int)/float(10000)", quiet=True, overwrite=True) #Get back to the original 'float' prediction of population density of random forest
     TMP_MAPS.append("weight_int")
     TMP_MAPS.append("weight_float")
+
     ## Force weight to zero if no built-up pixel in the grid
-    if built_up =='':
+    if len(built_up_pixels) == 0:
         gscript.run_command('r.mapcalc',expression="%s=weight_float"%weigthing_layer_name, quiet=True, overwrite=True)
     else:
+        # Set the region
         gscript.run_command('g.region', raster='clumped_grid')
-        gscript.run_command('r.resamp.stats', quiet=True, overwrite=True, input='class_%s'%built_up, output='sum_lc_%s'%built_up, method='sum')
-        gscript.run_command('r.mapcalc',expression="%s=if(sum_lc_%s!=0,weight_float,0)"%(weigthing_layer_name,built_up), quiet=True, overwrite=True)
-        TMP_MAPS.append('sum_lc_%s'%built_up)
+        # Define the name of the prefix corresponding to the binary layer according to the name of the raster definedin 'layer_to_mask_weights'
+        if layer_to_mask_weights == Land_cover:
+            inputlayer_prefix = 'LC'
+        elif layer_to_mask_weights == Land_use:
+            inputlayer_prefix = 'LU'
+        elif layer_to_mask_weights == mr_builtup:
+            inputlayer_prefix = 'MR'
+        ## Create r.mapcalc formula to be used for masking built pixels in the weight layer
+        formula = "%s="%weigthing_layer_name
+        # Iterate according to the lenght of the 'built_up_pixels' list
+        for x in built_up_pixels:
+            input_layer = '%s_%s'%(inputlayer_prefix,x)
+            resamp_layer = 'sum_%s'%input_layer
+            gscript.run_command('r.resamp.stats', quiet=True, overwrite=True, input=input_layer, output=resamp_layer, method='sum')
+            TMP_MAPS.append(resamp_layer)
+            formula += "if(%s!=0,weight_float,"%resamp_layer
+        formula += "0"
+        for x in built_up_pixels:
+            formula += ")"
+        # Apply to formula through r.mapcalc
+        gscript.run_command('r.mapcalc',expression=formula, quiet=True, overwrite=True)
 
     # -------------------------------------------------------------------------
     # Feature importances
@@ -177,21 +201,21 @@ def RandomForest(weigthing_layer_name,vector,id):
     indices = np.argsort(importances)[::-1]
     x_axis = importances[indices][::-1]
     idx = indices[::-1]
-    y_axis = range(x.shape[1])
-    plt.figure(figsize=(5, (len(y_axis)+1)*0.23))  #Set the size of the plot according to the number of features
-    plt.scatter(x_axis,y_axis)
-    Labels = []
-    for i in range(x.shape[1]):
-        Labels.append(x_grid.columns[idx[i]])
-    Labels=labels_from_csv(Labels)  #Change the labels of the feature according to 'lc_classes_list' and 'lu_classes_list'
-    plt.yticks(y_axis, Labels)
-    plt.ylim([-1,len(y_axis)])  #Ajust ylim
-    plt.xlim([-0.04,max(x_axis)+0.04]) #Ajust xlim
-    plt.title("Feature importances")
-    if not os.path.exists(os.path.split(path_plot)[0]):  #Create folder where to save the plot if not exists
-        os.makedirs(os.path.split(path_plot)[0])
-    plt.savefig(path_plot+'.png', bbox_inches='tight', dpi=400)  # Export in .png file (image)
-    plt.savefig(path_plot+'.eps', bbox_inches='tight', dpi=400)  # Export in .svg file (vectorial)
-    message='Final Random Forest model run - internal Out-of-bag score (OOB) : %0.3f'%regressor.oob_score_
-    log_text+=message+'\n'
-    print message
+    try:
+        y_axis = range(x.shape[1])
+        plt.figure(figsize=(4, (len(y_axis)+1)*0.23))  #Set the size of the plot according to the number of features
+        plt.scatter(x_axis,y_axis)
+        Labels = []
+        for i in range(x.shape[1]):
+            Labels.append(x_grid.columns[idx[i]])
+        Labels=labels_from_csv(Labels)  #Change the labels of the feature according to 'lc_classes_list' and 'lu_classes_list'
+        plt.yticks(y_axis, Labels)
+        plt.ylim([-1,len(y_axis)])  #Ajust ylim
+        plt.xlim([-0.02,max(x_axis)+0.02]) #Ajust xlim
+        plt.title("Feature importances")
+        if not os.path.exists(os.path.split(path_plot)[0]):  #Create folder where to save the plot if not exists
+            os.makedirs(os.path.split(path_plot)[0])
+        plt.savefig(path_plot+'.png', bbox_inches='tight', dpi=400)  # Export in .png file (image)
+        plt.savefig(path_plot+'.eps', bbox_inches='tight', dpi=400)  # Export in .svg file (vectorial)
+    except:
+        gscript.warning("The feature importance plot has not been created for some reason.")
