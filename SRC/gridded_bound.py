@@ -4,7 +4,7 @@
 import os
 import grass.script as gscript
 
-def gridded_admin_boundaries(input_vector, id, pop_column, grid):
+def gridded_admin_boundaries(input_vector, id, list_of_columns, grid):
     '''
     Function convecting the vector to raster then raster to vector: boundaries will have a "staircase" appearence
     so that each tile of the gridded vector will be contained in only one administrative unit
@@ -42,7 +42,8 @@ def gridded_admin_boundaries(input_vector, id, pop_column, grid):
                         flags='v',overwrite=True)
     tmp_name=random_layer_name()
     gscript.run_command('g.copy', quiet=True, vector='%s,%s'%(input_vector,tmp_name))
-    gscript.run_command('v.db.join', quiet=True, map_=gridded_vector, column='cat', other_table=tmp_name, other_column=id, subset_columns=pop_column) #join the population count
+    gscript.run_command('v.db.join', quiet=True, map_=gridded_vector, column='cat',
+                        other_table=tmp_name, other_column=id, subset_columns=','.join(list_of_columns)) #join the population count
     gscript.run_command('g.remove', quiet=True, flags='f', type='vector', name=tmp_name+'@'+current_mapset)
     check_no_missing_zones(input_vector, gridded_vector, resolution)
     return gridded_admin_units, gridded_vector
