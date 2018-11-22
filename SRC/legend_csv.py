@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from __main__ import lc_class_name, lu_class_name, mr_class_name
+from __main__ import lc_class_name, lu_class_name, mr_built_mask_class_name
 
 
 def labels_from_csv(current_labels):
@@ -20,8 +20,8 @@ def labels_from_csv(current_labels):
         for row in open(lu_class_name):
             classcode,classname=row.replace('\r\n','\n').split('\n')[0].split('|')
             lu_class_rename_dict[classcode]=classname
-    if mr_class_name != "":
-        for row in open(mr_class_name):
+    if mr_built_mask_class_name != "":
+        for row in open(mr_built_mask_class_name):
             classcode,classname=row.replace('\r\n','\n').split('\n')[0].split('|')
             mr_class_rename_dict[classcode]=classname
     for l in current_labels:

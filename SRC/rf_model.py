@@ -7,8 +7,11 @@ from __main__ import *
 import os
 import csv
 import math as ma
+import time
 import shutil
+import matplotlib.pyplot as plt
 import grass.script as gscript
+
 
 try:
     from sklearn.ensemble import RandomForestRegressor
@@ -24,7 +27,7 @@ def random_layer_name(prefix='tmp'):
     return prefix + '_' +gscript.basename(tmp).replace('.','_')
 
 
-def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_classes, layer_to_mask_weights, built_up_pixels, testlabel):
+def RandomForest(vector,id, lc_classes, lu_classes, mr_classes, layer_to_mask_weights, built_up_pixels, testlabel):
     '''
     Function that creates a random forest model trained at the administrative units level to generate gridded prediction
     covariates are proportion of each Land Cover's class (opt: with proportion of each land use's class)
@@ -235,12 +238,14 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     path_plot = os.path.join(test_folder,"Test_%s_RF_feature_importance"%testlabel)
     plt.savefig(path_plot+'.png', bbox_inches='tight', dpi=400)  # Export in .png file (image)
     plt.savefig(path_plot+'.eps', bbox_inches='tight', dpi=400)  # Export in .svg file (vectorial)
+    plt.close()  # Prevent the plot to be displayed at this stage of the script
 
     # Save the log
     fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%test), 'w')
     fout.write(function_log)
     fout.close()
 
-    # Print the log
+    # Print the log before creating the plot
     print function_log
-    return function_log
+    # Return the log and plot
+    return function_log, path_plot+'.png'

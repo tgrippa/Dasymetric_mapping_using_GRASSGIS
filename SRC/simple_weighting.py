@@ -49,7 +49,7 @@ def create_simple_weighting_layer_from_df(df_grid, weight_column, clumped_grid, 
 
     function_log = "-------------- TEST %s --------------\n"%testlabel
     function_log += "Simple weighting layer (not RF) based on '%s' \n\n"%weight_column
-    fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%test), 'w')
+    fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%testlabel), 'w')
     fout.write(function_log)
     fout.close()
 
