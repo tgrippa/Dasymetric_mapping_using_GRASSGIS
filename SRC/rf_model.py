@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 
-#from __main__ import gridded_vector, response_column, log_text, log_text_extend, n_jobs, kfold, TMP_CSV
 from __main__ import *
 
 
@@ -25,12 +24,26 @@ def random_layer_name(prefix='tmp'):
     return prefix + '_' +gscript.basename(tmp).replace('.','_')
 
 
-def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_classes):
+def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_classes, layer_to_mask_weights, built_up_pixels, testlabel):
     '''
     Function that creates a random forest model trained at the administrative units level to generate gridded prediction
     covariates are proportion of each Land Cover's class (opt: with proportion of each land use's class)
     '''
-    global gridded_vector, log_text, log_text_extend, n_jobs, kfold
+    global gridded_vector, n_jobs, kfold
+
+    #Create a string variable to be use to save function log
+    function_log = "-------------- TEST %s --------------\n"%testlabel
+    function_log += "Random Forest classifier for creating the weighting layer\n"
+    function_log += "VHR land cover classes used: %s \n"%(", ".join(lc_classes) if len(lc_classes)>0 else 'None')
+    function_log += "VHR land use classes used: %s \n"%(", ".join(lu_classes) if len(lu_classes)>0 else 'None')
+    function_log += "MR built-up classe used: %s \n"%(", ".join(mr_classes) if len(mr_classes)>0 else 'None')
+    function_log += "Layer '%s' used to force zero weights when proportion of class '%s' is null\n"%(layer_to_mask_weights, "', '".join(built_up_pixels))
+
+    #Create folder where to save the plot if not exists
+    test_folder = os.path.join(outputdirectory_results,"Test_%s"%testlabel)
+    if not os.path.exists(test_folder):
+        os.makedirs(test_folder)
+
     # Define the path to the file with all co-variates
     all_stats_grid=os.path.join(outputdirectory_grid,"all_stats.csv") # for grid level
     all_stats_admin=os.path.join(outputdirectory_admin,"all_stats.csv") # for admin level
@@ -64,6 +77,7 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     # -------------------------------------------------------------------------
     # Creating RF model
     # -------------------------------------------------------------------------
+    print "Working of random forest model..."
     df_admin = pd.read_csv(admin_attribute_table) #reading the csv file as dataframe
     df_grid = pd.read_csv(all_stats_grid)
 
@@ -83,7 +97,7 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     x=df_admin[list_covar]  #Get a dataframe with independent variables for administratives units
     #x.to_csv(path_or_buf=os.path.join(outputdirectory_admin,"covar_x.csv"), index=False) #Export in .csv for archive
     # Remove features whose importance is less than a threshold (Feature selection)
-    rfmodel=RandomForestRegressor(n_estimators = 500, oob_score = True, max_features='auto', n_jobs=-1)
+    rfmodel=RandomForestRegressor(n_estimators = 500, oob_score = True, max_features='auto', n_jobs=-1, random_state=0)  #random_state is fixed to allow exact replication
     a=SelectFromModel(rfmodel, threshold=min_fimportance)
     fited=a.fit(x, y)
     feature_idx = fited.get_support()   # Get list of True/False values according to the fact the OOB score of the covariate is upper the threshold
@@ -91,11 +105,12 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     x=fited.transform(x)  # Replace the dataframe with the selected features
     message="Selected covariates for the random forest model (with feature importance upper than {value} %) : \n".format(value=min_fimportance*100)  # Print the selected covariates for the model
     message+="\n".join(list_covar)
-    log_text+=message+'\n\n'
+    function_log+=message+'\n\n'
 
     #### Tuning of hyperparameters for the Random Forest regressor using "Grid search"
+    print "... starting grid search for RF hyperparameters..."
     # Instantiate the grid search model
-    grid_search = GridSearchCV(estimator=RandomForestRegressor(), param_grid=param_grid, cv=kfold, n_jobs=n_jobs, verbose=0)
+    grid_search = GridSearchCV(estimator=RandomForestRegressor(random_state=0), param_grid=param_grid, cv=kfold, n_jobs=n_jobs, verbose=0)
     grid_search.fit(x, y)   # Fit the grid search to the data
     regressor = grid_search.best_estimator_  # Save the best regressor
     regressor.fit(x, y) # Fit the best regressor with the data
@@ -103,32 +118,29 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     message='Parameter grid for Random Forest tuning :\n'
     for key in param_grid.keys():
         message+='    '+key+' : '+', '.join([str(i) for i in list(param_grid[key])])+'\n'
-    log_text+=message+'\n'
-    print message
+    function_log+=message+'\n'
     # Print infos and save it in the logfile - Tuned parameters
     message='Optimized parameters for Random Forest after grid search %s-fold cross-validation tuning :\n'%kfold
     for key in grid_search.best_params_.keys():
         message+='    %s : %s'%(key,grid_search.best_params_[key])+'\n'
-    log_text+=message+'\n'
-    print message
+    function_log+=message+'\n'
     # Print info of the mean cross-validated score (OOB) and stddev of the best_estimator
     best_score=grid_search.cv_results_['mean_test_score'][grid_search.best_index_]
     best_std=grid_search.cv_results_['std_test_score'][grid_search.best_index_]
     message="Mean cross-validated score (OOB) and stddev of the best_estimator : %0.3f (+/-%0.3f)"%(best_score,best_std)+'\n'
-    log_text+=message+'\n'
-    print message
+    function_log+=message+'\n'
     # Print mean OOB and stddev for each set of parameters
     means = grid_search.cv_results_['mean_test_score']
     stds = grid_search.cv_results_['std_test_score']
     message="Mean cross-validated score (OOB) and stddev for every tested set of parameter :\n"
     for mean, std, params in zip(means, stds, grid_search.cv_results_['params']):
         message+="%0.3f (+/-%0.03f) for %r"% (mean, std, params)+'\n'
-    log_text_extend+=message
+    function_log+=message+'\n'
     # Print final model OOB
     message='Final Random Forest model run - internal Out-of-bag score (OOB) : %0.3f'%regressor.oob_score_
-    log_text+=message+'\n'
-    print message
+    function_log+=message+'\n'
     #### Prediction
+    print "... starting prediction of weights..."
     # Predict on grids
     x_grid=df_grid[list_covar] #Get a dataframe with independent variables for grids (remaining after feature selection)
     #x_grid.to_csv(path_or_buf=os.path.join(outputdirectory_grid,"covar_x_grid.csv"), index=False) #Export in .csv for archive
@@ -142,6 +154,7 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     weightcsv=os.path.join(outputdirectory_grid,"weight.csv")
     df_weight.to_csv(path_or_buf=weightcsv) #Export in .csv for archive
     ## Define a reclassification rule
+    print "\nCreation of weighting layer..."
     cat_list=df_weight['cat'].tolist()
     weight_list=df_weight['weight_after_log'].tolist()
     rule=""
@@ -166,7 +179,8 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     TMP_MAPS.append("weight_int")
     TMP_MAPS.append("weight_float")
 
-    ## Force weight to zero if no built-up pixel in the grid
+    ## Save the final output and force weight to zero if no built-up pixel in the grid if desired
+    weigthing_layer_name = "Test_%s_weight"%testlabel  # Name of the weighting layer to produce
     gscript.run_command('r.mask', overwrite=True, raster='maskcopy')  # Apply mask
     if len(built_up_pixels) == 0:
         gscript.run_command('r.mapcalc',expression="%s=weight_float"%weigthing_layer_name, quiet=True, overwrite=True)
@@ -198,9 +212,11 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
         # Remove temporary layers for masking built pixels
         [gscript.run_command('g.remove', flags='f', type='raster', name=rast) for rast in TO_REMOVE]
     gscript.run_command('r.mask', flags='r')  # Remove mask
+
     # -------------------------------------------------------------------------
     # Feature importances
     # -------------------------------------------------------------------------
+    print "\nCreation of feature importance plot...\n\n"
     importances = regressor.feature_importances_  #Save feature importances from the model
     indices = np.argsort(importances)[::-1]
     x_axis = importances[indices][::-1]
@@ -216,11 +232,15 @@ def RandomForest(weigthing_layer_name,vector,id, lc_classes, lu_classes, mr_clas
     plt.ylim([-1,len(y_axis)])  #Ajust ylim
     plt.xlim([-0.02,max(x_axis)+0.02]) #Ajust xlim
     plt.title("Feature importances")
-    if not os.path.exists(os.path.split(path_plot)[0]):  #Create folder where to save the plot if not exists
-        os.makedirs(os.path.split(path_plot)[0])
+    path_plot = os.path.join(test_folder,"Test_%s_RF_feature_importance"%testlabel)
     plt.savefig(path_plot+'.png', bbox_inches='tight', dpi=400)  # Export in .png file (image)
     plt.savefig(path_plot+'.eps', bbox_inches='tight', dpi=400)  # Export in .svg file (vectorial)
-#==============================================================================
-#     except:
-#         gscript.warning("The feature importance plot has not been created for some reason.")
-#==============================================================================
+
+    # Save the log
+    fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%test), 'w')
+    fout.write(function_log)
+    fout.close()
+
+    # Print the log
+    print function_log
+    return function_log
