@@ -152,7 +152,7 @@ def RandomForest(vector,id, lc_classes, lu_classes, mr_classes, layer_to_mask_we
     df1 = df_grid['cat']
     df2 = pd.DataFrame(prediction, columns=['log'])
     df_weight = pd.concat((df1,df2), axis=1)
-    col = df_weight.apply(lambda row : np.exp(row["log"]), axis=1)
+    col = df_weight.apply(lambda row : np.exp(row["log"]), axis=1)  #Use exponential to 'un-log' the prediction
     df_weight ["weight_after_log"] = col
     weightcsv=os.path.join(outputdirectory_grid,"weight.csv")
     df_weight.to_csv(path_or_buf=weightcsv) #Export in .csv for archive
