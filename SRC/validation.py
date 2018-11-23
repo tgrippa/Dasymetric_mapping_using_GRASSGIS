@@ -8,6 +8,7 @@ import os
 import grass.script as gscript
 import math as ma
 import pandas as pd
+import geopandas as gpd
 import numpy as np
 
 
@@ -56,7 +57,7 @@ def get_ref_and_prediction_table(vector_admin_layer, ref_column, pop_column, pre
     fin.next()
     predict_list = [float(row.split(",")[12]) for row in fin] #12 refers to r.univar output for 'sum' stat
 
-    return pd.DataFrame({'Id':id_list,'Reference':ref_list,'Prediction':predict_list})
+    return pd.DataFrame({'cat':id_list,'Reference':ref_list,'Prediction':predict_list})
 
 
 def compute_validation_statistics(df, output_csv=""):
@@ -72,20 +73,32 @@ def compute_validation_statistics(df, output_csv=""):
 
     if output_csv:
         df.to_csv(output_csv, index=False)
+    return df
 
+
+def get_output_shapefile(vector_GRASS_layer, df_attributes_join, output_shapefile):
+    gscript.run_command('v.out.ogr', overwrite=True, flags='m', type='area',
+                    input=vector_GRASS_layer, output=output_shapefile, format='ESRI_Shapefile')
+    gdfA = gpd.read_file(output_shapefile)
+    gdfB = gdfA.join(df_attributes_join, on='cat', how='left', rsuffix='_b')
+    gdfB.drop(columns=['label',"cat_b"], inplace=True)
+    gdfB.to_file(output_shapefile)
 
 def validation(vector_admin_layer, ref_column, pop_column, testlabel):
     # Get paths to the outputfiles of the function
     test_folder = os.path.join(outputdirectory_results,"Test_%s"%testlabel)
     output_csv_validation = os.path.join(test_folder,"Test_%s_attribute_table_validation.csv"%testlabel)
     output_log_validation = os.path.join(test_folder,"Test_%s_log_validation.txt"%testlabel)
+    output_shape_validation = os.path.join(test_folder,"Test_%s_log_validation.shp"%testlabel)
+
     # Get the name of the prediction layer
     prediction_raster_pop = 'Test_%s_prediction'%testlabel
     ## Get a dataframe with unit 'id', reference value and predicted value
     df = get_ref_and_prediction_table(vector_admin_layer, ref_column, pop_column, prediction_raster_pop)
     ## Compute validation statistics for each administrative unit
-    compute_validation_statistics(df,output_csv_validation)
-
+    attributes_join = compute_validation_statistics(df,output_csv_validation)
+    ## Create shapefile with results
+    get_output_shapefile(vector_admin_layer, attributes_join, output_shape_validation)
     #### Compute overall validation statistics ####
     rmse = ma.sqrt(round(df['sqerror'].mean(),2))  #Compute RMSE (Root mean squared error)
     mean_ref = df['Reference'].mean()  #Compute mean reference population per admin unit
