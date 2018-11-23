@@ -19,6 +19,7 @@ def random_layer_name(prefix='tmp'):
 
 
 def get_ref_and_prediction_table(vector_admin_layer, ref_column, pop_column, prediction_raster_pop):
+    global TMP_MAPS, TMP_CSV
     # Define region to match the resolution and extend of the grid layer
     gscript.run_command('g.region', raster=clumped_grid)
     # Create raster with administrative unit ids
@@ -57,7 +58,7 @@ def get_ref_and_prediction_table(vector_admin_layer, ref_column, pop_column, pre
     fin.next()
     predict_list = [float(row.split(",")[12]) for row in fin] #12 refers to r.univar output for 'sum' stat
 
-    return pd.DataFrame({'cat':id_list,'Reference':ref_list,'Prediction':predict_list})
+    return pd.DataFrame({'Prediction':predict_list, 'Reference':ref_list, 'cat':id_list})
 
 
 def compute_validation_statistics(df, output_csv=""):
@@ -80,8 +81,8 @@ def get_output_shapefile(vector_GRASS_layer, df_attributes_join, output_shapefil
     gscript.run_command('v.out.ogr', overwrite=True, flags='m', type='area',
                     input=vector_GRASS_layer, output=output_shapefile, format='ESRI_Shapefile')
     gdfA = gpd.read_file(output_shapefile)
-    gdfB = gdfA.join(df_attributes_join, on='cat', how='left', rsuffix='_b')
-    gdfB.drop(columns=['label',"cat_b"], inplace=True)
+    gdfB = gdfA[["geometry","cat"]].join(df_attributes_join, how='left', rsuffix='_b')
+    gdfB.drop(columns=["cat_b"], inplace=True)
     gdfB.to_file(output_shapefile)
 
 def validation(vector_admin_layer, ref_column, pop_column, testlabel):
@@ -89,7 +90,8 @@ def validation(vector_admin_layer, ref_column, pop_column, testlabel):
     test_folder = os.path.join(outputdirectory_results,"Test_%s"%testlabel)
     output_csv_validation = os.path.join(test_folder,"Test_%s_attribute_table_validation.csv"%testlabel)
     output_log_validation = os.path.join(test_folder,"Test_%s_log_validation.txt"%testlabel)
-    output_shape_validation = os.path.join(test_folder,"Test_%s_log_validation.shp"%testlabel)
+    output_shape_validation = os.path.join(test_folder,"Test_%s_validation_level1_gridded.shp"%testlabel)
+    output_shape_validation2 = os.path.join(test_folder,"Test_%s_validation_level1.shp"%testlabel)
 
     # Get the name of the prediction layer
     prediction_raster_pop = 'Test_%s_prediction'%testlabel
@@ -99,6 +101,7 @@ def validation(vector_admin_layer, ref_column, pop_column, testlabel):
     attributes_join = compute_validation_statistics(df,output_csv_validation)
     ## Create shapefile with results
     get_output_shapefile(vector_admin_layer, attributes_join, output_shape_validation)
+    get_output_shapefile("admin_level1", attributes_join, output_shape_validation2)
     #### Compute overall validation statistics ####
     rmse = ma.sqrt(round(df['sqerror'].mean(),2))  #Compute RMSE (Root mean squared error)
     mean_ref = df['Reference'].mean()  #Compute mean reference population per admin unit

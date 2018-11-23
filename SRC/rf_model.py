@@ -241,7 +241,7 @@ def RandomForest(vector,id, lc_classes, lu_classes, mr_classes, layer_to_mask_we
     plt.close()  # Prevent the plot to be displayed at this stage of the script
 
     # Save the log
-    fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%test), 'w')
+    fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%testlabel), 'w')
     fout.write(function_log)
     fout.close()
 
