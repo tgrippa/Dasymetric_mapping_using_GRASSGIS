@@ -43,12 +43,37 @@ def create_simple_weighting_layer_from_df(df_grid, weight_column, clumped_grid, 
 
     test_folder = os.path.join(outputdirectory_results,"Test_%s"%testlabel)
 
-    #Create folder where to save the plot if not exists
+    #Create folder where to save the log if not exists
     if not os.path.exists(test_folder):
         os.makedirs(test_folder)
 
     function_log = "-------------- TEST %s --------------\n"%testlabel
     function_log += "Simple weighting layer (not RF) based on '%s' \n\n"%weight_column
+    fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%testlabel), 'w')
+    fout.write(function_log)
+    fout.close()
+
+    return function_log
+
+
+def create_random_weighting_layer(clumped_grid, testlabel):
+    '''
+    Function that creates a weighting layer with random weights
+    '''
+    # Name of the weighting layer to produce
+    output_weighting_layer = "Test_%s_weight"%testlabel
+    ## Reclass segments raster layer
+    gscript.run_command('g.region', raster=clumped_grid)
+    gscript.run_command('r.mapcalc', expression="%s=if(isnull(%s), null(), rand(0,100.00))"%(output_weighting_layer,clumped_grid),
+                        quiet=True, overwrite=True, seed='1234')
+
+    test_folder = os.path.join(outputdirectory_results,"Test_%s"%testlabel)
+    #Create folder where to save the log if not exists
+    if not os.path.exists(test_folder):
+        os.makedirs(test_folder)
+
+    function_log = "-------------- TEST %s --------------\n"%testlabel
+    function_log += "Randomly generated weighting layer \n\n"
     fout = open(os.path.join(test_folder,'Test_%s_log_weight_creation.txt'%testlabel), 'w')
     fout.write(function_log)
     fout.close()
